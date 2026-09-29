@@ -26,6 +26,10 @@ Route::middleware(['api', 'auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/{question}', [QuestionController::class, 'show']);
         Route::put('/{question}', [QuestionController::class, 'update']);
         Route::delete('/{question}', [QuestionController::class, 'destroy']);
+        Route::get('/{question}/versions', [QuestionController::class, 'versions']);
+        Route::get('/{question}/affected-exams', [QuestionController::class, 'affectedExams']);
+        Route::post('/{question}/withdraw', [QuestionController::class, 'withdraw']);
+        Route::post('/{question}/restore', [QuestionController::class, 'restore']);
     });
 
     Route::prefix('exam-papers')->group(function () {

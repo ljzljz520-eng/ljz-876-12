@@ -60,6 +60,10 @@ onMounted(async () => {
 const startExam = async (paper) => {
   try {
     const response = await api.post(`/exams/${paper.id}/start`)
+    const excluded = response.data.excluded_withdrawn_questions || []
+    if (excluded.length > 0) {
+      alert(`本场考试有 ${excluded.length} 道题目已被撤回，不会出现在试卷中`, '题目变动提示', 'warning')
+    }
     router.push(`/exams/${paper.id}`)
   } catch (e) {
     alert(e.response?.data?.message || '开始考试失败', '开始考试', 'error')

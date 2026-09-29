@@ -20,6 +20,8 @@ class Question extends Model
         'score',
         'created_by',
         'status',
+        'current_version',
+        'withdrawn_at',
     ];
 
     protected $casts = [
@@ -30,6 +32,8 @@ class Question extends Model
         'score' => 'decimal:2',
         'created_by' => 'integer',
         'status' => 'boolean',
+        'current_version' => 'integer',
+        'withdrawn_at' => 'datetime',
     ];
 
     public const TYPE_SINGLE_CHOICE = 'single_choice';
@@ -70,5 +74,18 @@ class Question extends Model
     {
         return $this->belongsToMany(ExamPaper::class, 'exam_paper_questions')
             ->withPivot('sort_order', 'score');
+    }
+
+    public function versions()
+    {
+        return $this->hasMany(QuestionVersion::class, 'question_id');
+    }
+
+    /**
+     * 是否已撤回
+     */
+    public function isWithdrawn(): bool
+    {
+        return !is_null($this->withdrawn_at) || !$this->status;
     }
 }

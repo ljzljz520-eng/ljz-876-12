@@ -47,9 +47,7 @@ services:
           table_exists=$$(mysql -h db -uroot -proot -Nse "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='exam_system' AND table_name='users';")
           if [ "$$table_exists" = "1" ]; then
             echo "Database already initialized, skip seed."
-            exit 0
-          fi
-
+          else
           mysql -h db -uroot -proot exam_system <<'SQL'
           SET NAMES utf8mb4;
           SET CHARACTER SET utf8mb4;
@@ -126,6 +124,8 @@ services:
               score DECIMAL(5,2) DEFAULT 1.00 COMMENT '分值',
               created_by BIGINT UNSIGNED COMMENT '创建人ID',
               status TINYINT(1) DEFAULT 1 COMMENT '状态: 1-启用 0-禁用',
+              current_version INT NOT NULL DEFAULT 1 COMMENT '当前版本号',
+              withdrawn_at TIMESTAMP NULL DEFAULT NULL COMMENT '撤回时间',
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX idx_category_id (category_id),
@@ -205,6 +205,7 @@ services:
               id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
               exam_record_id BIGINT UNSIGNED NOT NULL COMMENT '考试记录ID',
               question_id BIGINT UNSIGNED NOT NULL COMMENT '题目ID',
+              question_version INT NULL DEFAULT NULL COMMENT '考试时锁定的题目版本号',
               answer TEXT NOT NULL COMMENT '考生答案',
               is_correct TINYINT(1) DEFAULT 0 COMMENT '是否正确: 1-正确 0-错误',
               score DECIMAL(5,2) DEFAULT 0.00 COMMENT '得分',
@@ -213,6 +214,42 @@ services:
               INDEX idx_exam_record_id (exam_record_id),
               INDEX idx_question_id (question_id)
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='考生答案表';
+
+          CREATE TABLE IF NOT EXISTS question_versions (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              question_id BIGINT UNSIGNED NOT NULL COMMENT '题目ID',
+              version INT NOT NULL COMMENT '版本号',
+              category_id BIGINT UNSIGNED COMMENT '分类ID',
+              type VARCHAR(50) NOT NULL COMMENT '题目类型',
+              title TEXT NOT NULL COMMENT '题干(该版本)',
+              options JSON COMMENT '选项(JSON格式,该版本)',
+              answer TEXT COMMENT '正确答案(该版本)',
+              analysis TEXT COMMENT '解析(该版本)',
+              difficulty TINYINT(1) DEFAULT 1 COMMENT '难度: 1-简单 2-中等 3-困难',
+              score DECIMAL(5,2) DEFAULT 1.00 COMMENT '默认分值(该版本)',
+              change_summary VARCHAR(255) COMMENT '版本变更说明',
+              created_by BIGINT UNSIGNED COMMENT '操作人ID',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE KEY uk_question_version (question_id, version),
+              INDEX idx_question_id (question_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='题目版本历史表';
+
+          CREATE TABLE IF NOT EXISTS exam_record_questions (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              exam_record_id BIGINT UNSIGNED NOT NULL COMMENT '考试记录ID',
+              question_id BIGINT UNSIGNED NOT NULL COMMENT '题目ID',
+              question_version INT NOT NULL DEFAULT 1 COMMENT '锁定的题目版本号',
+              type VARCHAR(50) NOT NULL COMMENT '题目类型快照',
+              title TEXT NOT NULL COMMENT '题干快照',
+              options JSON COMMENT '选项快照(JSON格式)',
+              answer TEXT COMMENT '正确答案快照',
+              analysis TEXT COMMENT '解析快照',
+              score DECIMAL(5,2) NOT NULL DEFAULT 0.00 COMMENT '该题分值快照',
+              sort_order INT DEFAULT 0 COMMENT '排序',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_exam_record_id (exam_record_id),
+              INDEX idx_question_id (question_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='考试题目版本锁定快照表';
 
           CREATE TABLE IF NOT EXISTS cache (
               `key` VARCHAR(255) NOT NULL PRIMARY KEY,
@@ -229,6 +266,83 @@ services:
           SQL
 
           echo "Database initialized from inline schema."
+          fi
+
+          # ==========================================
+          # 幂等结构迁移段（每次启动均执行，含老库升级）
+          # ==========================================
+          add_column_if_missing() {
+            tbl="$$1"; col="$$2"; ddl="$$3"
+            cnt=$$(mysql -h db -uroot -proot -Nse "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='exam_system' AND table_name='$$tbl' AND column_name='$$col';")
+            if [ "$$cnt" = "0" ]; then
+              echo "Adding column $$tbl.$$col ..."
+              mysql -h db -uroot -proot exam_system -e "ALTER TABLE \`$$tbl\` ADD COLUMN $$ddl;"
+            fi
+          }
+
+          mysql -h db -uroot -proot exam_system <<'SQL'
+          CREATE TABLE IF NOT EXISTS question_versions (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              question_id BIGINT UNSIGNED NOT NULL COMMENT '题目ID',
+              version INT NOT NULL COMMENT '版本号',
+              category_id BIGINT UNSIGNED COMMENT '分类ID',
+              type VARCHAR(50) NOT NULL COMMENT '题目类型',
+              title TEXT NOT NULL COMMENT '题干(该版本)',
+              options JSON COMMENT '选项(JSON格式,该版本)',
+              answer TEXT COMMENT '正确答案(该版本)',
+              analysis TEXT COMMENT '解析(该版本)',
+              difficulty TINYINT(1) DEFAULT 1 COMMENT '难度: 1-简单 2-中等 3-困难',
+              score DECIMAL(5,2) DEFAULT 1.00 COMMENT '默认分值(该版本)',
+              change_summary VARCHAR(255) COMMENT '版本变更说明',
+              created_by BIGINT UNSIGNED COMMENT '操作人ID',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE KEY uk_question_version (question_id, version),
+              INDEX idx_question_id (question_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='题目版本历史表';
+
+          CREATE TABLE IF NOT EXISTS exam_record_questions (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              exam_record_id BIGINT UNSIGNED NOT NULL COMMENT '考试记录ID',
+              question_id BIGINT UNSIGNED NOT NULL COMMENT '题目ID',
+              question_version INT NOT NULL DEFAULT 1 COMMENT '锁定的题目版本号',
+              type VARCHAR(50) NOT NULL COMMENT '题目类型快照',
+              title TEXT NOT NULL COMMENT '题干快照',
+              options JSON COMMENT '选项快照(JSON格式)',
+              answer TEXT COMMENT '正确答案快照',
+              analysis TEXT COMMENT '解析快照',
+              score DECIMAL(5,2) NOT NULL DEFAULT 0.00 COMMENT '该题分值快照',
+              sort_order INT DEFAULT 0 COMMENT '排序',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_exam_record_id (exam_record_id),
+              INDEX idx_question_id (question_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='考试题目版本锁定快照表';
+          SQL
+
+          add_column_if_missing questions current_version "current_version INT NOT NULL DEFAULT 1 COMMENT '当前版本号' AFTER status"
+          add_column_if_missing questions withdrawn_at "withdrawn_at TIMESTAMP NULL DEFAULT NULL COMMENT '撤回时间' AFTER current_version"
+          add_column_if_missing exam_record_answers question_version "question_version INT NULL DEFAULT NULL COMMENT '考试时锁定的题目版本号' AFTER question_id"
+
+          mysql -h db -uroot -proot exam_system <<'SQL'
+          -- 为历史题目补齐 v1 版本记录
+          INSERT INTO question_versions (question_id, version, category_id, type, title, options, answer, analysis, difficulty, score, change_summary, created_by, created_at)
+          SELECT q.id, 1, q.category_id, q.type, q.title, q.options, q.answer, q.analysis, q.difficulty, q.score, '初始版本', q.created_by, NOW()
+          FROM questions q
+          WHERE NOT EXISTS (
+              SELECT 1 FROM question_versions v WHERE v.question_id = q.id AND v.version = 1
+          );
+
+          -- 为已存在的考试记录补齐题目版本锁定快照（按当前版本回填）
+          INSERT INTO exam_record_questions (exam_record_id, question_id, question_version, type, title, options, answer, analysis, score, sort_order, created_at)
+          SELECT r.id, epq.question_id, q.current_version, q.type, q.title, q.options, q.answer, q.analysis, epq.score, epq.sort_order, NOW()
+          FROM exam_records r
+          JOIN exam_paper_questions epq ON epq.exam_paper_id = r.exam_paper_id
+          JOIN questions q ON q.id = epq.question_id
+          WHERE NOT EXISTS (
+              SELECT 1 FROM exam_record_questions s WHERE s.exam_record_id = r.id
+          );
+          SQL
+
+          echo "Schema migration for question version locking done."
     networks:
       - exam-network
 

@@ -52,24 +52,45 @@ class ScoreController extends Controller
 
     public function ranking(Request $request, ExamPaper $examPaper)
     {
-        $ranking = ExamRecord::with('user')
+        $records = ExamRecord::with('user')
             ->where('exam_paper_id', $examPaper->id)
             ->where('status', 'graded')
             ->orderBy('score', 'desc')
             ->limit($request->input('limit', 50))
-            ->get()
-            ->map(function ($record, $index) {
-                return [
-                    'rank' => $index + 1,
-                    'user' => [
-                        'id' => $record->user->id,
-                        'username' => $record->user->username,
-                        'real_name' => $record->user->real_name,
-                    ],
-                    'score' => $record->score,
-                    'submitted_at' => $record->updated_at,
-                ];
-            });
+            ->get();
+
+        // 每条成绩对应的题目版本摘要（补考引用新版题时用于区分）
+        $versionMap = [];
+        $recordIds = $records->pluck('id')->all();
+        if (!empty($recordIds)) {
+            $versionMap = DB::table('exam_record_questions')
+                ->whereIn('exam_record_id', $recordIds)
+                ->select('exam_record_id', 'question_version', DB::raw('COUNT(*) as cnt'))
+                ->groupBy('exam_record_id', 'question_version')
+                ->orderBy('question_version')
+                ->get()
+                ->groupBy('exam_record_id')
+                ->map(function ($rows) {
+                    return $rows->map(function ($row) {
+                        return ['version' => (int) $row->question_version, 'count' => (int) $row->cnt];
+                    })->values()->all();
+                })
+                ->all();
+        }
+
+        $ranking = $records->map(function ($record, $index) use ($versionMap) {
+            return [
+                'rank' => $index + 1,
+                'user' => [
+                    'id' => $record->user->id,
+                    'username' => $record->user->username,
+                    'real_name' => $record->user->real_name,
+                ],
+                'score' => $record->score,
+                'question_versions' => $versionMap[$record->id] ?? [],
+                'submitted_at' => $record->updated_at,
+            ];
+        });
 
         return response()->json([
             'exam_paper' => [

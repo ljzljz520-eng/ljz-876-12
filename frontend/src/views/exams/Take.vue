@@ -15,7 +15,10 @@
           <span class="bg-indigo-100 text-indigo-800 text-sm font-medium px-2.5 py-0.5 rounded mr-3">{{ index + 1 }}</span>
           <div class="flex-1">
             <h3 class="text-lg font-medium text-gray-900 mb-2">{{ question.title }}</h3>
-            <p class="text-sm text-gray-500 mb-3">分值: {{ question.score }}分 | 题型: {{ questionTypeLabel(question.type) }}</p>
+            <p class="text-sm text-gray-500 mb-3">
+              分值: {{ question.score }}分 | 题型: {{ questionTypeLabel(question.type) }}
+              <span v-if="question.question_version" class="ml-2 px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-500" title="本次考试锁定的题目版本">v{{ question.question_version }}</span>
+            </p>
             <div class="space-y-2">
               <!-- 单选题 -->
               <template v-if="question.type === 'single_choice'">

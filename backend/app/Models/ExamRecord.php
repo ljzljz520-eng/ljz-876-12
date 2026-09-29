@@ -51,4 +51,12 @@ class ExamRecord extends Model
     {
         return $this->hasMany(ExamRecordAnswer::class, 'exam_record_id');
     }
+
+    /**
+     * 本次考试锁定的题目版本快照
+     */
+    public function snapshotQuestions()
+    {
+        return $this->hasMany(ExamRecordQuestion::class, 'exam_record_id');
+    }
 }

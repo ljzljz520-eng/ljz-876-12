@@ -105,14 +105,17 @@
                     暂无题目，请从右侧添加
                   </div>
                   <div v-else class="space-y-2">
-                    <div v-for="(q, index) in paperQuestions" :key="q.id" class="p-3 border rounded hover:bg-gray-50 flex justify-between items-start">
+                    <div v-for="(q, index) in paperQuestions" :key="q.id" class="p-3 border rounded hover:bg-gray-50 flex justify-between items-start" :class="{'border-red-200 bg-red-50/40': isWithdrawn(q)}">
                       <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2">
                           <span class="text-xs bg-gray-200 px-2 py-0.5 rounded">{{ index + 1 }}</span>
                           <span class="text-xs text-indigo-600">{{ getTypeName(q.type) }}</span>
                           <span class="text-xs text-orange-600">{{ q.pivot?.score || q.score }}分</span>
+                          <span class="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium" title="开考时将锁定该题的当前版本">v{{ q.current_version || 1 }}</span>
+                          <span v-if="isWithdrawn(q)" class="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">已撤回</span>
                         </div>
                         <p class="mt-1 text-sm truncate">{{ q.title }}</p>
+                        <p v-if="isWithdrawn(q)" class="mt-0.5 text-xs text-red-500">已开考的记录仍使用锁定版本；新考试将不再包含该题</p>
                       </div>
                       <button @click="removeQuestion(q.id)" class="ml-2 text-red-500 hover:text-red-700 text-sm">移除</button>
                     </div>
@@ -136,17 +139,20 @@
                     暂无可用题目
                   </div>
                   <div v-else class="space-y-2">
-                    <div v-for="q in availableQuestions" :key="q.id" class="p-3 border rounded hover:bg-gray-50 flex justify-between items-start">
+                    <div v-for="q in availableQuestions" :key="q.id" class="p-3 border rounded hover:bg-gray-50 flex justify-between items-start" :class="{'opacity-60': isWithdrawn(q)}">
                       <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2">
                           <span class="text-xs text-indigo-600">{{ getTypeName(q.type) }}</span>
                           <span class="text-xs text-orange-600">{{ q.score }}分</span>
                           <span class="text-xs text-gray-400">难度{{ q.difficulty }}</span>
+                          <span class="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">v{{ q.current_version || 1 }}</span>
+                          <span v-if="isWithdrawn(q)" class="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">已撤回</span>
                         </div>
                         <p class="mt-1 text-sm truncate">{{ q.title }}</p>
                       </div>
+                      <span v-if="isWithdrawn(q)" class="ml-2 text-gray-400 text-sm">不可添加</span>
                       <button
-                        v-if="!isQuestionInPaper(q.id)"
+                        v-else-if="!isQuestionInPaper(q.id)"
                         @click="addQuestion(q.id)"
                         class="ml-2 text-green-500 hover:text-green-700 text-sm"
                       >添加</button>
@@ -211,6 +217,8 @@ const typeNames = {
 }
 
 const getTypeName = (type) => typeNames[type] || type
+
+const isWithdrawn = (q) => !!q.withdrawn_at || q.status === 0 || q.status === false
 
 // 计算已选题目总分
 const paperTotalScore = computed(() => {

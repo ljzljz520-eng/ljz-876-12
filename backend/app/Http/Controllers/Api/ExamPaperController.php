@@ -154,6 +154,17 @@ class ExamPaperController extends Controller
         $existingIds = $examPaper->questions->pluck('id')->toArray();
         $newIds = array_diff($request->question_ids, $existingIds);
 
+        // 已撤回的题目不能再加入试卷（历史已开考记录不受影响）
+        $withdrawnCount = \App\Models\Question::whereIn('id', $newIds)
+            ->where(function ($q) {
+                $q->where('status', 0)->orWhereNotNull('withdrawn_at');
+            })
+            ->count();
+
+        if ($withdrawnCount > 0) {
+            return response()->json(['error' => '包含已撤回的题目，无法添加到试卷'], 422);
+        }
+
         $sortOrder = $examPaper->questions()->max('exam_paper_questions.sort_order') ?? 0;
 
         foreach ($newIds as $questionId) {
