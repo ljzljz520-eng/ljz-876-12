@@ -51,4 +51,9 @@ class ExamRecord extends Model
     {
         return $this->hasMany(ExamRecordAnswer::class, 'exam_record_id');
     }
+
+    public function snapshots()
+    {
+        return $this->hasMany(ExamRecordSnapshot::class, 'exam_record_id')->orderBy('sort_order');
+    }
 }

@@ -13,20 +13,43 @@
           <tr>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">试卷</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">得分</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">题目版本</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">考试时间</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
-          <tr v-for="record in records" :key="record.id">
+          <tr v-for="record in records" :key="record.id" class="hover:bg-gray-50">
             <td class="px-6 py-4 whitespace-nowrap">{{ record.exam_paper?.title }}</td>
             <td class="px-6 py-4 whitespace-nowrap font-bold" :class="{'text-green-600': record.score >= 60, 'text-red-600': record.score < 60}">{{ record.score }} 分</td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <span v-if="record.status === 'graded'">
+                <span v-if="record.outdated_question_count > 0"
+                      class="inline-flex items-center text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200"
+                      title="开考后有题目被教师修订，本答卷仍按开考时版本判分">
+                  {{ record.outdated_question_count }} 题用旧版
+                </span>
+                <span v-else class="inline-flex items-center text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                  最新版
+                </span>
+              </span>
+              <span v-else class="text-xs text-gray-400">—</span>
+            </td>
             <td class="px-6 py-4 whitespace-nowrap">
               <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                 {{ record.status === 'graded' ? '已评分' : record.status }}
               </span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ new Date(record.created_at).toLocaleString() }}</td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <router-link v-if="record.status === 'graded'"
+                           :to="`/records/${record.id}`"
+                           class="text-indigo-600 hover:text-indigo-900 text-sm">
+                查看答卷/版本
+              </router-link>
+              <span v-else class="text-xs text-gray-400">进行中</span>
+            </td>
           </tr>
         </tbody>
       </table>

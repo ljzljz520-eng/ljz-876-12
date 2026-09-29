@@ -1,7 +1,10 @@
 <template>
   <div class="space-y-6">
     <div class="flex justify-between items-center">
-      <h1 class="text-2xl font-bold text-gray-900">{{ examPaper?.title }}</h1>
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">{{ examPaper?.title }}</h1>
+        <p class="text-xs text-gray-400 mt-0.5">本卷题目版本在开考时已锁定，期间教师修改题目不影响你的答卷与判分</p>
+      </div>
       <div class="text-lg">
         剩余时间: <span class="font-mono font-bold" :class="{'text-red-600': timeRemaining < 60}">{{ formatTime(timeRemaining) }}</span>
       </div>

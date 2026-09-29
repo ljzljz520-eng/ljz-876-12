@@ -26,6 +26,10 @@ Route::middleware(['api', 'auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/{question}', [QuestionController::class, 'show']);
         Route::put('/{question}', [QuestionController::class, 'update']);
         Route::delete('/{question}', [QuestionController::class, 'destroy']);
+        Route::get('/{question}/versions', [QuestionController::class, 'versions']);
+        Route::get('/{question}/impact', [QuestionController::class, 'impact']);
+        Route::post('/{question}/withdraw', [QuestionController::class, 'withdraw']);
+        Route::post('/{question}/restore', [QuestionController::class, 'restore']);
     });
 
     Route::prefix('exam-papers')->group(function () {
@@ -34,6 +38,8 @@ Route::middleware(['api', 'auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/{examPaper}', [ExamPaperController::class, 'show']);
         Route::put('/{examPaper}', [ExamPaperController::class, 'update']);
         Route::delete('/{examPaper}', [ExamPaperController::class, 'destroy']);
+        Route::post('/{examPaper}/publish', [ExamPaperController::class, 'publish']);
+        Route::post('/{examPaper}/unpublish', [ExamPaperController::class, 'unpublish']);
         Route::post('/{examPaper}/questions', [ExamPaperController::class, 'addQuestions']);
         Route::delete('/{examPaper}/questions/{question}', [ExamPaperController::class, 'removeQuestion']);
     });

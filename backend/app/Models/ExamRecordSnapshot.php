@@ -2,37 +2,38 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class ExamRecordAnswer extends Model
+class ExamRecordSnapshot extends Model
 {
-    use HasFactory;
+    public $timestamps = false;
 
     protected $fillable = [
         'exam_record_id',
         'question_id',
         'question_version',
+        'type',
+        'title',
+        'options',
         'answer',
-        'is_correct',
+        'analysis',
         'score',
+        'sort_order',
+        'created_at',
     ];
 
     protected $casts = [
         'exam_record_id' => 'integer',
         'question_id' => 'integer',
         'question_version' => 'integer',
-        'is_correct' => 'boolean',
+        'options' => 'array',
         'score' => 'decimal:2',
+        'sort_order' => 'integer',
+        'created_at' => 'datetime',
     ];
 
     public function examRecord()
     {
         return $this->belongsTo(ExamRecord::class, 'exam_record_id');
-    }
-
-    public function question()
-    {
-        return $this->belongsTo(Question::class, 'question_id');
     }
 }

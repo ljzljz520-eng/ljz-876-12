@@ -17,6 +17,7 @@
           <tr>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">标题</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">题目数</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">总分</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">时长</th>
@@ -26,12 +27,35 @@
         <tbody class="bg-white divide-y divide-gray-200">
           <tr v-for="paper in examPapers" :key="paper.id" class="hover:bg-gray-50">
             <td class="px-6 py-4">{{ paper.id }}</td>
-            <td class="px-6 py-4">{{ paper.title }}</td>
+            <td class="px-6 py-4">
+              {{ paper.title }}
+              <span
+                v-if="paper.published && paper.outdated_question_count > 0"
+                class="ml-2 inline-block text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200"
+                :title="`有 ${paper.outdated_question_count} 道题被教师修订过，重新发布后补考卷使用新版`"
+              >
+                {{ paper.outdated_question_count }} 题有新版
+              </span>
+            </td>
+            <td class="px-6 py-4">
+              <span v-if="paper.published" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">已发布·版本锁定</span>
+              <span v-else class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-600">草稿</span>
+            </td>
             <td class="px-6 py-4">{{ paper.question_count }} 题</td>
             <td class="px-6 py-4">{{ paper.total_score }} 分</td>
             <td class="px-6 py-4">{{ paper.total_time }} 分钟</td>
-            <td class="px-6 py-4 space-x-2">
+            <td class="px-6 py-4 space-x-2 whitespace-nowrap">
               <button @click="openQuestionModal(paper)" class="text-green-600 hover:text-green-900">管理题目</button>
+              <button
+                v-if="!paper.published"
+                @click="publishPaper(paper)"
+                class="text-indigo-600 hover:text-indigo-900"
+              >发布</button>
+              <button
+                v-else
+                @click="republishPaper(paper)"
+                class="text-amber-600 hover:text-amber-900"
+              >{{ paper.outdated_question_count > 0 ? '重新发布(用新版)' : '重新发布' }}</button>
               <button @click="openEditModal(paper)" class="text-indigo-600 hover:text-indigo-900">编辑</button>
               <button @click="deletePaper(paper)" class="text-red-600 hover:text-red-900">删除</button>
             </td>
@@ -96,6 +120,21 @@
                 已选 {{ paperQuestions.length }} 题，共 {{ paperTotalScore }} 分
               </span>
             </div>
+
+            <!-- 版本锁定提示条 -->
+            <div class="px-6 py-3 border-b text-sm"
+                 :class="paperOutdatedCount > 0 ? 'bg-amber-50 text-amber-800' : (currentPaper?.published ? 'bg-green-50 text-green-800' : 'bg-gray-50 text-gray-600')">
+              <template v-if="currentPaper?.published">
+                <span v-if="paperOutdatedCount > 0">
+                  本试卷已发布并锁定版本，其中 {{ paperOutdatedCount }} 道题有教师修订的新版本。已开考的考试仍用旧版；补考卷要点
+                  <button @click="republishCurrent" class="underline font-semibold mx-0.5">重新发布</button>
+                  才会引用新版。
+                </span>
+                <span v-else>本试卷已发布，题目版本已锁定，之后教师改题不影响已开考的考试。</span>
+              </template>
+              <span v-else>当前为草稿，添加题目后请返回列表点击"发布"，发布时锁定题目版本。</span>
+            </div>
+
             <div class="flex-1 overflow-hidden flex">
               <!-- 左侧：已选题目 -->
               <div class="w-1/2 border-r flex flex-col">
@@ -107,10 +146,17 @@
                   <div v-else class="space-y-2">
                     <div v-for="(q, index) in paperQuestions" :key="q.id" class="p-3 border rounded hover:bg-gray-50 flex justify-between items-start">
                       <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
                           <span class="text-xs bg-gray-200 px-2 py-0.5 rounded">{{ index + 1 }}</span>
                           <span class="text-xs text-indigo-600">{{ getTypeName(q.type) }}</span>
                           <span class="text-xs text-orange-600">{{ q.pivot?.score || q.score }}分</span>
+                          <span
+                            class="text-xs px-1.5 py-0.5 rounded border"
+                            :class="isPaperQuestionOutdated(q) ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-blue-50 text-blue-700 border-blue-200'"
+                            :title="isPaperQuestionOutdated(q) ? `已锁定 v${lockedVersion(q)}，题库最新为 v${q.current_version || 1}，重新发布后更新` : `当前锁定的就是最新版本 v${lockedVersion(q)}`"
+                          >
+                            锁 v{{ lockedVersion(q) }}<template v-if="isPaperQuestionOutdated(q)"> → 新 v{{ q.current_version || 1 }}</template>
+                          </span>
                         </div>
                         <p class="mt-1 text-sm truncate">{{ q.title }}</p>
                       </div>
@@ -138,10 +184,11 @@
                   <div v-else class="space-y-2">
                     <div v-for="q in availableQuestions" :key="q.id" class="p-3 border rounded hover:bg-gray-50 flex justify-between items-start">
                       <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
                           <span class="text-xs text-indigo-600">{{ getTypeName(q.type) }}</span>
                           <span class="text-xs text-orange-600">{{ q.score }}分</span>
                           <span class="text-xs text-gray-400">难度{{ q.difficulty }}</span>
+                          <span class="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">v{{ q.current_version || 1 }}</span>
                         </div>
                         <p class="mt-1 text-sm truncate">{{ q.title }}</p>
                       </div>
@@ -217,9 +264,17 @@ const paperTotalScore = computed(() => {
   return paperQuestions.value.reduce((sum, q) => sum + parseFloat(q.pivot?.score || q.score || 0), 0).toFixed(2)
 })
 
-// 过滤可用题目（排除已选）
+// 题目被试卷锁定的版本（后端详情返回 locked_version；兼容旧字段 pivot.question_version）
+const lockedVersion = (q) => q.locked_version ?? q.pivot?.question_version ?? 1
+const isPaperQuestionOutdated = (q) => {
+  if (q.has_newer_version !== undefined) return q.has_newer_version
+  return Number(lockedVersion(q)) < Number(q.current_version || 1)
+}
+const paperOutdatedCount = computed(() => paperQuestions.value.filter(q => isPaperQuestionOutdated(q)).length)
+
+// 过滤可用题目（排除已选；题库选择器只显示启用中的题）
 const availableQuestions = computed(() => {
-  let questions = allQuestions.value
+  let questions = allQuestions.value.filter(q => q.status !== 0)
   if (questionFilter.value.category_id) {
     questions = questions.filter(q => q.category_id == questionFilter.value.category_id)
   }
@@ -254,7 +309,7 @@ const fetchCategories = async () => {
 const fetchAllQuestions = async () => {
   loadingQuestions.value = true
   try {
-    const response = await api.get('/questions', { params: { per_page: 1000 } })
+    const response = await api.get('/questions', { params: { per_page: 1000, status: 'all' } })
     allQuestions.value = response.data.questions.data
   } catch (e) {
     console.error('Failed to fetch questions:', e)
@@ -374,6 +429,37 @@ const deletePaper = async (paper) => {
       toast.error(e.response?.data?.error || '删除失败')
     }
   }
+}
+
+// 发布：锁定题目版本（补考场景重新发布会引用新版题，已开考考试不受影响）
+const publishPaper = async (paper) => {
+  try {
+    const res = await api.post(`/exam-papers/${paper.id}/publish`)
+    await fetchExamPapers()
+    toast.success(res.data.message || '发布成功')
+  } catch (e) {
+    console.error('Failed to publish paper:', e)
+    if (!shouldUseGlobalErrorModal(e.response?.status)) {
+      toast.error(e.response?.data?.message || e.response?.data?.error || '发布失败')
+    }
+  }
+}
+
+const republishPaper = async (paper) => {
+  const tip = paper.outdated_question_count > 0
+    ? `有 ${paper.outdated_question_count} 道题存在新版本。重新发布后，新的考试（含补考）将使用最新版题；已经开考或交卷的历史考试仍使用当时版本。确认重新发布？`
+    : '重新发布会把所有题目刷新到最新版本。已开考/已交卷的历史考试不受影响。确认继续？'
+  const ok = await confirm(tip, '重新发布确认')
+  if (!ok) return
+  await publishPaper(paper)
+}
+
+// 管理题目弹窗内的"重新发布"
+const republishCurrent = async () => {
+  if (!currentPaper.value) return
+  await publishPaper(currentPaper.value)
+  await fetchPaperDetail(currentPaper.value.id)
+  currentPaper.value = examPapers.value.find(p => p.id === currentPaper.value.id) || currentPaper.value
 }
 
 onMounted(() => {

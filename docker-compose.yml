@@ -126,6 +126,7 @@ services:
               score DECIMAL(5,2) DEFAULT 1.00 COMMENT '分值',
               created_by BIGINT UNSIGNED COMMENT '创建人ID',
               status TINYINT(1) DEFAULT 1 COMMENT '状态: 1-启用 0-禁用',
+              current_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '当前版本号',
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX idx_category_id (category_id),
@@ -143,6 +144,26 @@ services:
           (8, 'single_choice', 'MySQL中用于查询数据的语句是？', '{"A": "SELECT", "B": "INSERT", "C": "UPDATE", "D": "DELETE"}', 'A', 'SELECT用于查询数据', 1, 2.00, 2, 1),
           (8, 'true_false', 'MySQL是一种关系型数据库管理系统。', NULL, 'true', 'MySQL是最流行的开源关系型数据库之一', 1, 1.00, 2, 1);
 
+          CREATE TABLE IF NOT EXISTS question_versions (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              question_id BIGINT UNSIGNED NOT NULL COMMENT '题目ID',
+              version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '版本号',
+              type VARCHAR(30) NOT NULL COMMENT '题目类型快照',
+              title TEXT NOT NULL COMMENT '题干快照',
+              options JSON COMMENT '选项快照',
+              answer TEXT NOT NULL COMMENT '正确答案快照',
+              analysis TEXT COMMENT '答案解析快照',
+              difficulty TINYINT(1) DEFAULT 1 COMMENT '难度快照',
+              created_by BIGINT UNSIGNED COMMENT '修订人ID',
+              change_summary TEXT COMMENT '版本说明',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE KEY uq_question_version (question_id, version),
+              INDEX idx_qv_question_id (question_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='题目历史版本表';
+
+          INSERT INTO question_versions (question_id, version, type, title, options, answer, analysis, difficulty, created_by, change_summary)
+          SELECT id, 1, type, title, options, answer, analysis, difficulty, created_by, '初始版本' FROM questions;
+
           CREATE TABLE IF NOT EXISTS exam_papers (
               id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
               title VARCHAR(200) NOT NULL COMMENT '试卷标题',
@@ -151,7 +172,8 @@ services:
               total_time INT DEFAULT 60 COMMENT '考试时长(分钟)',
               question_count INT NOT NULL COMMENT '题目数量',
               type ENUM('fixed', 'random') DEFAULT 'fixed' COMMENT '出题方式: fixed-固定 random-随机',
-              status TINYINT(1) DEFAULT 1 COMMENT '状态: 1-启用 0-禁用',
+              status TINYINT(1) DEFAULT 1 COMMENT '状态: 1-已发布 0-草稿',
+              published_at TIMESTAMP NULL COMMENT '发布时间(版本锁定基准)',
               created_by BIGINT UNSIGNED COMMENT '创建人ID',
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -159,15 +181,16 @@ services:
               INDEX idx_status (status)
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试卷表';
 
-          INSERT INTO exam_papers (title, description, total_score, total_time, question_count, type, created_by, status) VALUES
-          ('计算机基础测试', '测试计算机基础知识，包含操作系统和数据结构', 10.00, 30, 3, 'fixed', 2, 1),
-          ('Python入门测试', 'Python基础知识测试', 8.00, 20, 2, 'fixed', 2, 1),
-          ('数据库基础测试', '数据库基础知识测试', 3.00, 15, 2, 'fixed', 2, 1);
+          INSERT INTO exam_papers (title, description, total_score, total_time, question_count, type, created_by, status, published_at) VALUES
+          ('计算机基础测试', '测试计算机基础知识，包含操作系统和数据结构', 10.00, 30, 3, 'fixed', 2, 1, NOW()),
+          ('Python入门测试', 'Python基础知识测试', 8.00, 20, 2, 'fixed', 2, 1, NOW()),
+          ('数据库基础测试', '数据库基础知识测试', 3.00, 15, 2, 'fixed', 2, 1, NOW());
 
           CREATE TABLE IF NOT EXISTS exam_paper_questions (
               id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
               exam_paper_id BIGINT UNSIGNED NOT NULL COMMENT '试卷ID',
               question_id BIGINT UNSIGNED NOT NULL COMMENT '题目ID',
+              question_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '发布时锁定的题目版本',
               sort_order INT DEFAULT 0 COMMENT '排序',
               score DECIMAL(5,2) NOT NULL COMMENT '该题分值',
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -176,15 +199,15 @@ services:
               UNIQUE KEY uk_paper_question (exam_paper_id, question_id)
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试卷-题目关联表';
 
-          INSERT INTO exam_paper_questions (exam_paper_id, question_id, sort_order, score) VALUES
-          (1, 1, 1, 2.00),
-          (1, 2, 2, 1.00),
-          (1, 3, 3, 2.00),
-          (2, 4, 1, 1.00),
-          (2, 5, 2, 3.00),
-          (2, 6, 3, 2.00),
-          (3, 6, 1, 2.00),
-          (3, 7, 2, 1.00);
+          INSERT INTO exam_paper_questions (exam_paper_id, question_id, question_version, sort_order, score) VALUES
+          (1, 1, 1, 1, 2.00),
+          (1, 2, 1, 2, 1.00),
+          (1, 3, 1, 3, 2.00),
+          (2, 4, 1, 1, 1.00),
+          (2, 5, 1, 2, 3.00),
+          (2, 6, 1, 3, 2.00),
+          (3, 6, 1, 1, 2.00),
+          (3, 7, 1, 2, 1.00);
 
           CREATE TABLE IF NOT EXISTS exam_records (
               id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -205,6 +228,7 @@ services:
               id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
               exam_record_id BIGINT UNSIGNED NOT NULL COMMENT '考试记录ID',
               question_id BIGINT UNSIGNED NOT NULL COMMENT '题目ID',
+              question_version INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '作答依据的题目版本',
               answer TEXT NOT NULL COMMENT '考生答案',
               is_correct TINYINT(1) DEFAULT 0 COMMENT '是否正确: 1-正确 0-错误',
               score DECIMAL(5,2) DEFAULT 0.00 COMMENT '得分',
@@ -213,6 +237,23 @@ services:
               INDEX idx_exam_record_id (exam_record_id),
               INDEX idx_question_id (question_id)
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='考生答案表';
+
+          CREATE TABLE IF NOT EXISTS exam_record_snapshots (
+              id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+              exam_record_id BIGINT UNSIGNED NOT NULL COMMENT '考试记录ID',
+              question_id BIGINT UNSIGNED NOT NULL COMMENT '题目ID',
+              question_version INT UNSIGNED NOT NULL COMMENT '锁定的题目版本',
+              type VARCHAR(30) NOT NULL COMMENT '题目类型快照',
+              title TEXT NOT NULL COMMENT '题干快照',
+              options JSON COMMENT '选项快照',
+              answer TEXT NOT NULL COMMENT '正确答案快照',
+              analysis TEXT COMMENT '答案解析快照',
+              score DECIMAL(5,2) DEFAULT 0.00 COMMENT '该题分值快照',
+              sort_order INT DEFAULT 0 COMMENT '排序',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE KEY uq_record_question_snapshot (exam_record_id, question_id),
+              INDEX idx_ers_exam_record_id (exam_record_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='开考题目版本快照表';
 
           CREATE TABLE IF NOT EXISTS cache (
               `key` VARCHAR(255) NOT NULL PRIMARY KEY,
@@ -266,6 +307,9 @@ services:
       - exam-network
     ports:
       - "9000:8080"
+    command: >
+      sh -c "php artisan migrate --force || true;
+             php artisan serve --host=0.0.0.0 --port=8080"
 
   frontend:
     build:
